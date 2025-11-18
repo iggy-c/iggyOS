@@ -7,33 +7,13 @@ log() {
   echo "=== $* ==="
 }
 
-log "Starting Amy OS build process"
-
-#
-# ENABLE REPOS
-#
-log "Adding external repos"
-
-# Docker CE repo
-dnf5 -y config-manager --add-repo https://download.docker.com/linux/fedora/docker-ce.repo
-
-# Brave browser repo
-dnf5 -y config-manager --add-repo https://brave-browser-rpm-release.s3.brave.com/brave-browser.repo
-rpm --import https://brave-browser-rpm-release.s3.brave.com/brave-core.asc
-
-# Microsoft VSCode repo
-dnf5 -y config-manager --add-repo https://packages.microsoft.com/yumrepos/vscode
-rpm --import https://packages.microsoft.com/keys/microsoft.asc
-
-# Cloudflare WARP repo
-dnf5 -y config-manager --add-repo https://pkg.cloudflareclient.com/cloudflare-warp.repo
-
-
-#
-# PACKAGE GROUPS
-#
+# RPM packages list
 declare -A RPM_PACKAGES=(
   ["fedora"]="\
+    android-tools \
+    aria2 \
+    bchunk \
+    bleachbit \
     fuse-btfs \
     fuse-devel \
     fuse3-devel \
@@ -41,43 +21,52 @@ declare -A RPM_PACKAGES=(
     gnome-disk-utility \
     gparted \
     gwenview \
+    hashcat \
     isoimagewriter \
     kcalc \
     kgpg \
     ksystemlog \
-    micro \
+    llama-cpp \
+    neovim \
     nmap \
+    ollama \
+    openrgb \
+    printer-driver-brlaser \
     qemu-kvm \
+    thefuck \
     util-linux \
     virt-manager \
     virt-viewer \
-    wireshark"
+    wireshark \
+    yakuake \
+    yt-dlp \
+    zsh-autosuggestions \
+    zsh"
 
   ["terra"]="\
-    firacode-nerd-fonts \
-    firemono-nerd-fonts \
-    starship"
+    coolercontrol \
+    ghostty \
+    hack-nerd-fonts \
+    starship \
+    ubuntu-nerd-fonts \
+    ubuntumono-nerd-fonts \
+    ubuntusans-nerd-fonts"
 
-  # Split rpmfusion repos into separate keys
-  ["rpmfusion-free"]="\
+  ["rpmfusion-free,rpmfusion-free-updates,rpmfusion-nonfree,rpmfusion-nonfree-updates"]="\
     audacious \
     audacious-plugins-freeworld \
     audacity-freeworld"
 
-  ["rpmfusion-free-updates"]="\
-    audacious \
-    audacious-plugins-freeworld \
-    audacity-freeworld"
-
-  ["rpmfusion-nonfree"]="\
-    audacious \
-    audacious-plugins-freeworld \
-    audacity-freeworld"
-
-  ["rpmfusion-nonfree-updates"]="\
-    audacious \
-    audacious-plugins-freeworld \
-    audacity-freeworld"
+  ["fedora-multimedia"]="\
+    HandBrake-cli \
+    HandBrake-gui \
+    haruna \
+    mpv \
+    vlc-plugin-bittorrent \
+    vlc-plugin-ffmpeg \
+    vlc-plugin-kde \
+    vlc-plugin-pause-click \
+    vlc"
 
   ["docker-ce"]="\
     containerd.io \
@@ -91,46 +80,48 @@ declare -A RPM_PACKAGES=(
   ["vscode"]="code"
 )
 
-#
-# INSTALL PACKAGES
-#
+log "Starting Amy OS build process"
+
 log "Installing RPM packages"
-
 mkdir -p /var/opt
-
 for repo in "${!RPM_PACKAGES[@]}"; do
   read -ra pkg_array <<<"${RPM_PACKAGES[$repo]}"
-
   if [[ $repo == copr:* ]]; then
-    log "Installing from COPR: $repo"
+    # Handle COPR packages
     copr_repo=${repo#copr:}
     dnf5 -y copr enable "$copr_repo"
     dnf5 -y install "${pkg_array[@]}"
     dnf5 -y copr disable "$copr_repo"
-
-  elif [[ $repo == "fedora" ]]; then
-    # base repo: no flags needed
-    log "Installing from base Fedora repo"
-    dnf5 -y install "${pkg_array[@]}"
-
   else
-    # regular repo: use --repo=
-    log "Installing from repo: $repo"
-    dnf5 -y install --repo="$repo" "${pkg_array[@]}"
+    # Handle regular packages
+    [[ $repo != "fedora" ]] && enable_opt="--enable-repo=$repo" || enable_opt=""
+    cmd=(dnf5 -y install)
+    [[ -n "$enable_opt" ]] && cmd+=("$enable_opt")
+    cmd+=("${pkg_array[@]}")
+    "${cmd[@]}"
   fi
 done
 
+log "Enabling system services"
+systemctl enable docker.socket libvirtd.service
 
-#
-# SYSTEMD PRESETS (instead of systemctl enable)
-#
-log "Configuring systemd presets"
+log "Installing Cursor CLI"
+CLI_DIR="/tmp/cursor-cli"
+mkdir -p "$CLI_DIR"
+aria2c --dir="$CLI_DIR" --out="cursor-cli.tar.gz" --max-tries=3 --connect-timeout=30 "https://api2.cursor.sh/updates/download-latest?os=cli-alpine-x64"
+tar -xzf "$CLI_DIR/cursor-cli.tar.gz" -C "$CLI_DIR"
+install -m 0755 "$CLI_DIR/cursor" /usr/bin/cursor-cli
 
-mkdir -p /usr/lib/systemd/system-preset
-cat >/usr/lib/systemd/system-preset/99-amyos.preset <<EOF
-enable docker.socket
-enable libvirtd.service
-EOF
+log "Adding Amy OS just recipes"
+echo "import \"/usr/share/amyos/just/amy.just\"" >>/usr/share/ublue-os/justfile
 
+log "Hide incompatible Bazzite just recipes"
+for recipe in "install-coolercontrol" "install-openrgb"; do
+  if ! grep -l "^$recipe:" /usr/share/ublue-os/just/*.just | grep -q .; then
+    echo "Error: Recipe $recipe not found in any just file"
+    exit 1
+  fi
+  sed -i "s/^$recipe:/_$recipe:/" /usr/share/ublue-os/just/*.just
+done
 
 log "Build process completed"
