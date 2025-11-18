@@ -1,6 +1,5 @@
 FROM scratch AS ctx
-COPY build_files/ /ctx/
-RUN chmod +x /ctx/install-apps.sh /ctx/build.sh
+COPY build_files/ 
 
 FROM ghcr.io/ublue-os/aurora:stable
 
