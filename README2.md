@@ -37,7 +37,7 @@ A custom Fedora Atomic image designed for gaming, development and daily use.
 - Switch to standalone SteamOS session from login screen
 - Virtual Machine Manager, libvirt and QEMU
 - VLC, mpv, HandBrake and Audacity
-- VSCode, Cursor (with Remote Tunnels fixed), Neovim
+- Cursor (with Remote Tunnels fixed), Neovim
 
 ## Install
 
@@ -71,7 +71,7 @@ ujust amy-install-brews
 # Install only AppImages
 ujust amy-install-appimages
 
-# Setup Amy OS settings for Cursor and VSCode
+# Setup Amy OS settings for Cursor
 ujust amy-setup-editors
 
 # Setup Ghostty terminal configuration

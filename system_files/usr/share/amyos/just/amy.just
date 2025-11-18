@@ -82,12 +82,12 @@ amy-install-appimages:
 
 
 
-# Setup Amy OS recommended settings for Cursor and VSCode
+# Setup Amy OS recommended settings for Cursor
 amy-setup-editors:
     #!/usr/bin/env bash
     set -euo pipefail
 
-    for editor in "Cursor" "Code"; do
+    for editor in "Cursor"; do
       echo "Setting up $editor configuration..."
       config_dir="${HOME}/.config/${editor}/User"
       mkdir -p "$config_dir"
