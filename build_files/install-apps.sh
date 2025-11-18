@@ -7,7 +7,31 @@ log() {
   echo "=== $* ==="
 }
 
-# RPM packages list
+log "Starting Amy OS build process"
+
+#
+# ENABLE REPOS
+#
+log "Adding external repos"
+
+# Docker CE repo
+dnf5 -y config-manager --add-repo https://download.docker.com/linux/fedora/docker-ce.repo
+
+# Brave browser repo
+dnf5 -y config-manager --add-repo https://brave-browser-rpm-release.s3.brave.com/brave-browser.repo
+rpm --import https://brave-browser-rpm-release.s3.brave.com/brave-core.asc
+
+# Microsoft VSCode repo
+dnf5 -y config-manager --add-repo https://packages.microsoft.com/yumrepos/vscode
+rpm --import https://packages.microsoft.com/keys/microsoft.asc
+
+# Cloudflare WARP repo
+dnf5 -y config-manager --add-repo https://pkg.cloudflareclient.com/cloudflare-warp.repo
+
+
+#
+# PACKAGE GROUPS
+#
 declare -A RPM_PACKAGES=(
   ["fedora"]="\
     fuse-btfs \
@@ -34,21 +58,26 @@ declare -A RPM_PACKAGES=(
     firemono-nerd-fonts \
     starship"
 
-  ["rpmfusion-free,rpmfusion-free-updates,rpmfusion-nonfree,rpmfusion-nonfree-updates"]="\
+  # Split rpmfusion repos into separate keys
+  ["rpmfusion-free"]="\
     audacious \
     audacious-plugins-freeworld \
     audacity-freeworld"
 
-  ["fedora-multimedia"]="\
-    HandBrake-cli \
-    HandBrake-gui \
-    haruna \
-    mpv \
-    vlc-plugin-bittorrent \
-    vlc-plugin-ffmpeg \
-    vlc-plugin-kde \
-    vlc-plugin-pause-click \
-    vlc"
+  ["rpmfusion-free-updates"]="\
+    audacious \
+    audacious-plugins-freeworld \
+    audacity-freeworld"
+
+  ["rpmfusion-nonfree"]="\
+    audacious \
+    audacious-plugins-freeworld \
+    audacity-freeworld"
+
+  ["rpmfusion-nonfree-updates"]="\
+    audacious \
+    audacious-plugins-freeworld \
+    audacity-freeworld"
 
   ["docker-ce"]="\
     containerd.io \
@@ -62,29 +91,46 @@ declare -A RPM_PACKAGES=(
   ["vscode"]="code"
 )
 
-log "Starting Amy OS build process"
-
+#
+# INSTALL PACKAGES
+#
 log "Installing RPM packages"
+
 mkdir -p /var/opt
+
 for repo in "${!RPM_PACKAGES[@]}"; do
   read -ra pkg_array <<<"${RPM_PACKAGES[$repo]}"
+
   if [[ $repo == copr:* ]]; then
-    # Handle COPR packages
+    log "Installing from COPR: $repo"
     copr_repo=${repo#copr:}
     dnf5 -y copr enable "$copr_repo"
     dnf5 -y install "${pkg_array[@]}"
     dnf5 -y copr disable "$copr_repo"
+
+  elif [[ $repo == "fedora" ]]; then
+    # base repo: no flags needed
+    log "Installing from base Fedora repo"
+    dnf5 -y install "${pkg_array[@]}"
+
   else
-    # Handle regular packages
-    [[ $repo != "fedora" ]] && enable_opt="--enable-repo=$repo" || enable_opt=""
-    cmd=(dnf5 -y install)
-    [[ -n "$enable_opt" ]] && cmd+=("$enable_opt")
-    cmd+=("${pkg_array[@]}")
-    "${cmd[@]}"
+    # regular repo: use --repo=
+    log "Installing from repo: $repo"
+    dnf5 -y install --repo="$repo" "${pkg_array[@]}"
   fi
 done
 
-log "Enabling system services"
-systemctl enable docker.socket libvirtd.service
+
+#
+# SYSTEMD PRESETS (instead of systemctl enable)
+#
+log "Configuring systemd presets"
+
+mkdir -p /usr/lib/systemd/system-preset
+cat >/usr/lib/systemd/system-preset/99-amyos.preset <<EOF
+enable docker.socket
+enable libvirtd.service
+EOF
+
 
 log "Build process completed"
